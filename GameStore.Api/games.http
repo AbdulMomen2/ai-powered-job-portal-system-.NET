@@ -2,3 +2,15 @@ GET http://localhost:5088/games
 
 ###
 GET http://localhost:5088/games/1
+
+###
+
+POST http://localhost:5088/games
+Content-Type: application/json
+
+{
+    "name" : "The Lost City",
+    "genre" : "Horror",
+    "price" : 4.25,
+    "releaseDate" : "2028-10-20"
+}
