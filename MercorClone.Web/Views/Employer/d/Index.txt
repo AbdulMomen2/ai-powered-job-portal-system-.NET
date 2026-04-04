@@ -1,0 +1,523 @@
+﻿@model IEnumerable<MercorClone.Web.Models.Entities.JobPost>
+
+@{
+    ViewData["Title"] = "Job Board";
+    Layout = null;
+}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - JobConnect</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#7c3aed',
+                        primaryHover: '#6d28d9',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .slide-over-open { transform: translateX(0%); }
+        .slide-over-closed { transform: translateX(100%); }
+
+        /* Review slider */
+        .review-track {
+            display: flex;
+            transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+        .review-slide {
+            min-width: 320px;
+            max-width: 320px;
+        }
+
+        /* Auth Modal */
+        #authModal {
+            transition: opacity 0.3s ease;
+        }
+        #authModal.hidden { display: none; }
+
+        /* Countdown ring */
+        @@keyframes countdown-ring {
+            from { stroke-dashoffset: 0; }
+            to { stroke-dashoffset: 125.6; }
+        }
+        .countdown-svg circle.track {
+            stroke-dasharray: 125.6;
+            stroke-dashoffset: 0;
+            animation: countdown-ring 60s linear forwards;
+            transform-origin: center;
+            transform: rotate(-90deg);
+        }
+    </style>
+</head>
+<body class="bg-white font-sans text-gray-900 antialiased overflow-x-hidden">
+
+    <!-- ===================== NAVBAR ===================== -->
+    <nav class="bg-white border-b border-gray-200 sticky top-0 z-40">
+        <div class="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center gap-8">
+                    <a href="/" class="flex items-center gap-2">
+                        <div class="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shadow-sm">
+                            <i data-lucide="briefcase" class="text-white w-5 h-5"></i>
+                        </div>
+                        <span class="text-xl font-bold tracking-tight text-gray-900">JobConnect</span>
+                    </a>
+                    <div class="hidden md:flex items-center gap-6 text-sm font-medium text-gray-600">
+                        <a href="/" class="text-gray-900 font-semibold">Home</a>
+                        <a href="#company-reviews" class="hover:text-primary transition-colors">Company Reviews</a>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-4">
+                    @if (User.Identity != null && User.Identity.IsAuthenticated)
+                    {
+                        <!-- Authenticated: show post job, profile, logout -->
+                        <a href="/Employer/CreateJob" class="text-sm font-medium text-gray-600 hover:text-primary transition-colors hidden sm:block">Post a Job</a>
+                        <a href="/Account/Dashboard" class="w-9 h-9 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center hover:ring-2 hover:ring-primary hover:ring-offset-2 transition-all" title="Dashboard">
+                            <i data-lucide="user" class="w-4 h-4 text-gray-600"></i>
+                        </a>
+                        <form action="/Account/Logout" method="post" class="inline">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" title="Logout" class="w-9 h-9 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center hover:ring-2 hover:ring-red-400 hover:ring-offset-2 hover:bg-red-50 transition-all">
+                                <i data-lucide="log-out" class="w-4 h-4 text-gray-500 hover:text-red-500"></i>
+                            </button>
+                        </form>
+                    }
+                    else
+                    {
+                        <!-- Guest: protected "Post a Job" + login link -->
+                        <button onclick="openAuthModal('employer')" class="text-sm font-medium text-gray-600 hover:text-primary transition-colors hidden sm:block">Post a Job</button>
+                        <a href="/Account/Login" class="text-sm font-semibold bg-primary text-white px-4 py-2 rounded-full hover:bg-primaryHover transition-colors shadow-sm">Login</a>
+                        <a href="/Account/Register" class="text-sm font-medium text-gray-600 hover:text-primary transition-colors hidden sm:block">Sign Up</a>
+                    }
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ===================== SEARCH ===================== -->
+    <div class="bg-white pt-8 pb-6 border-b border-gray-100">
+        <div class="max-w-4xl mx-auto px-4">
+            <p class="text-center text-sm text-gray-500 mb-4 font-medium">Find your next opportunity — thousands of jobs updated daily</p>
+            <form method="get" action="/Search" class="bg-white rounded-full shadow-sm border border-gray-300 p-1.5 flex flex-col md:flex-row items-center gap-2 focus-within:ring-2 focus-within:ring-primary focus-within:border-primary transition-all">
+                <div class="flex-1 flex items-center px-4 w-full">
+                    <i data-lucide="search" class="text-gray-400 w-5 h-5 mr-3 flex-shrink-0"></i>
+                    <input type="text" name="q" placeholder="Job title, keywords, or company" class="w-full py-2.5 text-sm focus:outline-none text-gray-900 bg-transparent placeholder-gray-500" />
+                </div>
+                <div class="hidden md:block w-px h-8 bg-gray-200"></div>
+                <div class="flex-1 flex items-center px-4 w-full">
+                    <i data-lucide="map-pin" class="text-gray-400 w-5 h-5 mr-3 flex-shrink-0"></i>
+                    <input type="text" name="l" placeholder='City, state, zip code, or "remote"' class="w-full py-2.5 text-sm focus:outline-none text-gray-900 bg-transparent placeholder-gray-500" />
+                </div>
+                <button type="submit" class="w-full md:w-auto bg-primary text-white px-8 py-2.5 rounded-full text-sm font-semibold hover:bg-primaryHover transition-colors shadow-sm">
+                    Search
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- ===================== COMPANY REVIEWS SLIDER ===================== -->
+    <div id="company-reviews" class="border-b border-gray-100 py-10">
+        <div class="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-lg font-bold text-gray-900">Company Reviews</h2>
+                <div class="flex items-center gap-2">
+                    <button id="reviewPrev" onclick="shiftReviews(-1)" class="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 hover:border-primary transition-all disabled:opacity-30" disabled>
+                        <i data-lucide="chevron-left" class="w-4 h-4 text-gray-600"></i>
+                    </button>
+                    <button id="reviewNext" onclick="shiftReviews(1)" class="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 hover:border-primary transition-all">
+                        <i data-lucide="chevron-right" class="w-4 h-4 text-gray-600"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="overflow-hidden">
+                <div id="reviewTrack" class="review-track gap-5">
+                    @{
+                        var companies = new[] {
+                            new { Name = "Sam's Club",   Reviews = "28,221", Color = "bg-blue-100 text-blue-600",   Initials = "SC",  Rating = 4, Quote = "Great benefits and flexible hours. Management is very supportive of career growth." },
+                            new { Name = "UPS",          Reviews = "63,360", Color = "bg-yellow-100 text-yellow-700", Initials = "UPS", Rating = 3, Quote = "Physically demanding but solid pay and great coworkers make it worth it." },
+                            new { Name = "Burger King",  Reviews = "58,413", Color = "bg-orange-100 text-orange-600", Initials = "BK",  Rating = 3, Quote = "Fast-paced environment. Leadership could improve but entry-level is a great start." },
+                            new { Name = "TJ Maxx",      Reviews = "13,736", Color = "bg-red-100 text-red-600",      Initials = "TJ",  Rating = 4, Quote = "Fun workplace culture. Employees genuinely look out for each other." },
+                            new { Name = "Hobby Lobby",  Reviews = "6,893",  Color = "bg-green-100 text-green-600",  Initials = "HL",  Rating = 4, Quote = "Relaxed atmosphere and great team. Work-life balance is respected." },
+                            new { Name = "Amazon",       Reviews = "124,510",Color = "bg-indigo-100 text-indigo-600", Initials = "AMZ", Rating = 3, Quote = "High intensity but the learning opportunities are unmatched in the industry." },
+                            new { Name = "Apple",        Reviews = "41,200", Color = "bg-gray-100 text-gray-600",    Initials = "APL", Rating = 5, Quote = "Incredible culture of innovation. Being part of something this meaningful is rare." },
+                        };
+                    }
+
+                    @foreach (var company in companies)
+                    {
+                        <div class="review-slide bg-white border border-gray-200 rounded-2xl p-5 flex-shrink-0 hover:shadow-md hover:border-gray-300 transition-all">
+                            <div class="flex items-start gap-4 mb-3">
+                                <div class="w-12 h-12 rounded-xl border border-gray-200 flex items-center justify-center flex-shrink-0 @company.Color font-bold text-sm">
+                                    @company.Initials
+                                </div>
+                                <div>
+                                    <h4 class="font-bold text-base text-gray-900">@company.Name</h4>
+                                    <div class="flex items-center gap-1.5 mt-0.5">
+                                        <div class="flex text-amber-400">
+                                            @for (int s = 1; s <= 5; s++)
+                                            {
+                                                if (s <= company.Rating)
+                                                {
+                                                    <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+                                                }
+                                                else
+                                                {
+                                                    <svg class="w-3.5 h-3.5 fill-current text-gray-200" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+                                                }
+                                            }
+                                        </div>
+                                        <a href="#" class="text-primary text-xs hover:underline font-medium">@company.Reviews reviews</a>
+                                    </div>
+                                </div>
+                            </div>
+                            <p class="text-sm text-gray-500 italic mb-4 line-clamp-2">"@company.Quote"</p>
+                            <div class="flex items-center gap-5 text-sm text-gray-500 font-medium">
+                                <a href="#" class="hover:text-gray-900 hover:underline transition-colors">Salaries</a>
+                                <a href="#" class="hover:text-gray-900 hover:underline transition-colors">Q&A</a>
+                                <a href="#" class="hover:text-gray-900 hover:underline transition-colors">Open jobs</a>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Dot indicators -->
+            <div id="reviewDots" class="flex justify-center gap-2 mt-5"></div>
+        </div>
+    </div>
+
+    <!-- ===================== JOB GRID ===================== -->
+    <main class="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-xl font-bold text-gray-900">Explore opportunities</h2>
+            <div class="flex items-center gap-2 text-sm">
+                <span class="text-gray-500 font-medium">Sort by</span>
+                <select class="border border-gray-200 rounded-lg py-1.5 px-3 focus:outline-none focus:border-primary bg-white shadow-sm font-medium text-gray-700">
+                    <option>Priority</option>
+                    <option>Date Posted</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            @if (!Model.Any())
+            {
+                <div class="col-span-full p-8 text-center text-gray-500 border border-gray-200 bg-white rounded-2xl shadow-sm">
+                    <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-3 text-gray-300"></i>
+                    <p>No jobs have been posted yet.</p>
+                    @if (User.Identity != null && User.Identity.IsAuthenticated)
+                    {
+                        <a href="/Employer/CreateJob" class="mt-3 inline-block text-sm text-primary font-semibold hover:underline">Post the first job →</a>
+                    }
+                    else
+                    {
+                        <button onclick="openAuthModal('employer')" class="mt-3 inline-block text-sm text-primary font-semibold hover:underline">Post the first job →</button>
+                    }
+                </div>
+            }
+
+            @foreach (var job in Model)
+            {
+                <div onclick="openJobDetails(this)"
+                     data-title="@job.Title"
+                     data-location="@(job.LocationType ?? "Remote")"
+                     data-salary="@(job.MinSalary.HasValue && job.MaxSalary.HasValue ? "$" + job.MinSalary + " - $" + job.MaxSalary + " / hour" : "Competitive salary")"
+                     data-desc="@job.JobDescriptionHtml"
+                     class="bg-white border border-gray-200 rounded-xl p-5 hover:shadow-md hover:border-gray-300 transition-all cursor-pointer flex flex-col justify-between min-h-[160px] group">
+                    <div>
+                        <div class="flex justify-between items-start gap-2">
+                            <h3 class="font-semibold text-gray-900 text-sm line-clamp-2 group-hover:text-primary transition-colors">@job.Title</h3>
+                            <span class="text-xs text-primary bg-purple-50 px-2 py-0.5 rounded font-medium whitespace-nowrap flex-shrink-0">Apply ↗</span>
+                        </div>
+                        <p class="text-gray-500 text-sm mt-1.5">
+                            @if (job.MinSalary.HasValue && job.MaxSalary.HasValue)
+                            {
+                                <span>$@job.MinSalary - $@job.MaxSalary / hour</span>
+                            }
+                            else
+                            {
+                                <span>Salary competitive</span>
+                            }
+                        </p>
+                    </div>
+                    <div class="flex items-center justify-between mt-6">
+                        <div class="flex items-center gap-2">
+                            <div class="flex -space-x-2">
+                                <div class="w-6 h-6 rounded-full border-2 border-white bg-red-400 flex items-center justify-center text-[8px] text-white font-bold">A</div>
+                                <div class="w-6 h-6 rounded-full border-2 border-white bg-blue-400 flex items-center justify-center text-[8px] text-white font-bold">B</div>
+                                <div class="w-6 h-6 rounded-full border-2 border-white bg-green-400 flex items-center justify-center text-[8px] text-white font-bold">C</div>
+                            </div>
+                            <span class="text-xs text-gray-400 font-medium">@(new Random().Next(10, 300)) hired</span>
+                        </div>
+                        <div class="text-gray-400 text-xs font-medium flex items-center gap-1">
+                            <i data-lucide="user-plus" class="w-3.5 h-3.5"></i>
+                            $@(new Random().Next(100, 600))
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <!-- Pagination -->
+        <div class="flex items-center justify-center gap-1 mt-10 text-sm font-medium text-gray-600">
+            <button class="px-3 py-1.5 text-gray-400 cursor-not-allowed flex items-center gap-1"><i data-lucide="chevron-left" class="w-4 h-4"></i> Previous</button>
+            <button class="w-8 h-8 flex items-center justify-center rounded-lg border border-primary bg-purple-50 text-primary shadow-sm">1</button>
+            <button class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors">2</button>
+            <button class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors">3</button>
+            <span class="px-1 text-gray-400">...</span>
+            <button class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors">10</button>
+            <button class="px-3 py-1.5 hover:text-gray-900 transition-colors flex items-center gap-1">Next <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+        </div>
+    </main>
+
+    <!-- ===================== JOB SLIDE-OVER ===================== -->
+    <div id="jobSlideOver" class="fixed inset-0 z-50 hidden" role="dialog" aria-modal="true">
+        <div id="slideOverBackdrop" class="fixed inset-0 bg-gray-900/30 opacity-0 transition-opacity duration-300" onclick="closeJobDetails()"></div>
+        <div class="fixed inset-0 overflow-hidden pointer-events-none">
+            <div class="absolute inset-y-0 right-0 flex max-w-full pl-10">
+                <div id="slideOverPanel" class="pointer-events-auto w-screen max-w-2xl transform transition-transform duration-300 ease-in-out slide-over-closed bg-white shadow-2xl flex flex-col">
+                    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-white">
+                        <h2 class="text-lg font-bold text-gray-900">Job Details</h2>
+                        <button onclick="closeJobDetails()" class="rounded-md bg-white text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
+                            <i data-lucide="x" class="h-6 w-6"></i>
+                        </button>
+                    </div>
+                    <div class="flex-1 overflow-y-auto p-6">
+                        <h2 id="soTitle" class="text-2xl font-bold text-gray-900 mb-3"></h2>
+                        <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-gray-600 mb-6">
+                            <span id="soLocation" class="flex items-center gap-1.5"><i data-lucide="map-pin" class="w-4 h-4 text-gray-400"></i></span>
+                            <span id="soSalary" class="flex items-center gap-1.5"><i data-lucide="dollar-sign" class="w-4 h-4 text-gray-400"></i></span>
+                        </div>
+                        <div class="flex items-center gap-3 mb-8 pb-8 border-b border-gray-100">
+                            @if (User.Identity != null && User.Identity.IsAuthenticated)
+                            {
+                                <button class="bg-primary text-white px-8 py-2.5 rounded-lg text-sm font-semibold hover:bg-primaryHover transition-colors shadow-sm">Apply now</button>
+                            }
+                            else
+                            {
+                                <button onclick="closeJobDetails(); openAuthModal('candidate')" class="bg-primary text-white px-8 py-2.5 rounded-lg text-sm font-semibold hover:bg-primaryHover transition-colors shadow-sm">Login to Apply</button>
+                            }
+                            <button class="w-10 h-10 flex items-center justify-center border border-gray-200 rounded-lg text-gray-500 hover:text-primary hover:border-primary hover:bg-gray-50 transition-all">
+                                <i data-lucide="bookmark" class="w-4 h-4"></i>
+                            </button>
+                            <button class="w-10 h-10 flex items-center justify-center border border-gray-200 rounded-lg text-gray-500 hover:text-primary hover:border-primary hover:bg-gray-50 transition-all">
+                                <i data-lucide="share-2" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                        <div id="soDesc" class="prose prose-sm max-w-none text-gray-600 leading-relaxed"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== AUTH PROMPT MODAL ===================== -->
+    @if (User.Identity == null || !User.Identity.IsAuthenticated)
+    {
+        <div id="authModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <!-- Backdrop -->
+            <div class="absolute inset-0 bg-gray-900/50 backdrop-blur-sm" onclick="dismissAuthModal()"></div>
+
+            <!-- Modal card -->
+            <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 text-center">
+                <!-- Countdown ring -->
+                <div id="countdownRingWrapper" class="absolute -top-6 left-1/2 -translate-x-1/2 w-12 h-12 hidden">
+                    <svg class="countdown-svg w-12 h-12" viewBox="0 0 44 44">
+                        <circle cx="22" cy="22" r="20" fill="none" stroke="#e5e7eb" stroke-width="3"/>
+                        <circle class="track" cx="22" cy="22" r="20" fill="none" stroke="#7c3aed" stroke-width="3" stroke-linecap="round"/>
+                    </svg>
+                    <span id="countdownNum" class="absolute inset-0 flex items-center justify-center text-xs font-bold text-primary">60</span>
+                </div>
+
+                <div class="w-14 h-14 bg-purple-50 rounded-2xl flex items-center justify-center mx-auto mb-5">
+                    <i data-lucide="lock" class="w-7 h-7 text-primary"></i>
+                </div>
+
+                <h3 id="authModalTitle" class="text-xl font-bold text-gray-900 mb-2">Sign in to continue</h3>
+                <p id="authModalDesc" class="text-sm text-gray-500 mb-6">Create a free account or log in to apply for jobs, post opportunities, and more.</p>
+
+                <div class="flex flex-col gap-3">
+                    <a id="authLoginBtn" href="/Account/Login" class="w-full bg-primary text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-primaryHover transition-colors shadow-sm">
+                        Log In
+                    </a>
+                    <a id="authRegisterBtn" href="/Account/Register" class="w-full border border-gray-200 text-gray-700 py-2.5 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors">
+                        Create Free Account
+                    </a>
+                    <button onclick="dismissAuthModal()" class="text-xs text-gray-400 hover:text-gray-600 mt-1 transition-colors">Maybe later</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        lucide.createIcons();
+
+        // ── Review Slider ──────────────────────────────────────────────
+        const track = document.getElementById('reviewTrack');
+        const dotsContainer = document.getElementById('reviewDots');
+        const slides = track ? track.querySelectorAll('.review-slide') : [];
+        const CARD_W = 320 + 20; // card width + gap
+        const VISIBLE = Math.max(1, Math.floor(window.innerWidth / CARD_W));
+        const MAX_IDX = slides.length > VISIBLE ? slides.length - VISIBLE : 0;
+        let reviewIdx = 0;
+        let reviewTimer = null;
+
+        function buildDots() {
+            if (!dotsContainer) return;
+            dotsContainer.innerHTML = '';
+            for (let i = 0; i <= MAX_IDX; i++) {
+                const d = document.createElement('button');
+                d.className = `w-2 h-2 rounded-full transition-all duration-300 ${i === 0 ? 'bg-primary w-5' : 'bg-gray-300'}`;
+                d.onclick = () => goToReview(i);
+                dotsContainer.appendChild(d);
+            }
+        }
+
+        function updateDots() {
+            if (!dotsContainer) return;
+            dotsContainer.querySelectorAll('button').forEach((d, i) => {
+                d.className = `h-2 rounded-full transition-all duration-300 ${i === reviewIdx ? 'bg-primary w-5' : 'bg-gray-300 w-2'}`;
+            });
+        }
+
+        function goToReview(idx) {
+            reviewIdx = Math.max(0, Math.min(idx, MAX_IDX));
+            if (track) track.style.transform = `translateX(-${reviewIdx * CARD_W}px)`;
+            const prev = document.getElementById('reviewPrev');
+            const next = document.getElementById('reviewNext');
+            if (prev) prev.disabled = reviewIdx === 0;
+            if (next) next.disabled = reviewIdx === MAX_IDX;
+            updateDots();
+        }
+
+        function shiftReviews(dir) {
+            goToReview(reviewIdx + dir);
+            restartAutoSlide();
+        }
+
+        function restartAutoSlide() {
+            clearInterval(reviewTimer);
+            reviewTimer = setInterval(() => {
+                goToReview(reviewIdx < MAX_IDX ? reviewIdx + 1 : 0);
+            }, 4000);
+        }
+
+        buildDots();
+        restartAutoSlide();
+
+        // ── Slide-over ─────────────────────────────────────────────────
+        const slideOver = document.getElementById('jobSlideOver');
+        const slideOverPanel = document.getElementById('slideOverPanel');
+        const slideOverBackdrop = document.getElementById('slideOverBackdrop');
+
+        function openJobDetails(el) {
+            if (el) {
+                document.getElementById('soTitle').textContent = el.dataset.title || '';
+                document.getElementById('soLocation').innerHTML = `<i data-lucide="map-pin" class="w-4 h-4 text-gray-400 inline mr-1"></i>${el.dataset.location || ''}`;
+                document.getElementById('soSalary').innerHTML = `<i data-lucide="dollar-sign" class="w-4 h-4 text-gray-400 inline mr-1"></i>${el.dataset.salary || ''}`;
+                document.getElementById('soDesc').innerHTML = el.dataset.desc || '<p>No description provided.</p>';
+                lucide.createIcons();
+            }
+            slideOver.classList.remove('hidden');
+            setTimeout(() => {
+                slideOverBackdrop.classList.remove('opacity-0');
+                slideOverBackdrop.classList.add('opacity-100');
+                slideOverPanel.classList.remove('slide-over-closed');
+                slideOverPanel.classList.add('slide-over-open');
+            }, 10);
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeJobDetails() {
+            slideOverBackdrop.classList.remove('opacity-100');
+            slideOverBackdrop.classList.add('opacity-0');
+            slideOverPanel.classList.remove('slide-over-open');
+            slideOverPanel.classList.add('slide-over-closed');
+            setTimeout(() => {
+                slideOver.classList.add('hidden');
+                document.body.style.overflow = '';
+            }, 300);
+        }
+
+        // ── Auth Modal ─────────────────────────────────────────────────
+        const authModal = document.getElementById('authModal');
+        let authDismissed = sessionStorage.getItem('authDismissed') === '1';
+        let countdown = 60;
+        let countdownTimer = null;
+
+        function openAuthModal(intent) {
+            if (!authModal) return;
+            const title = document.getElementById('authModalTitle');
+            const desc = document.getElementById('authModalDesc');
+            const loginBtn = document.getElementById('authLoginBtn');
+            const regBtn = document.getElementById('authRegisterBtn');
+
+            if (intent === 'employer') {
+                if (title) title.textContent = 'Sign in as Employer';
+                if (desc) desc.textContent = 'Log in or create an employer account to post jobs and find top talent.';
+                if (loginBtn) loginBtn.href = '/Account/Login?returnUrl=/Employer/CreateJob&role=Employer';
+                if (regBtn) regBtn.href = '/Account/Register?role=Employer';
+            } else {
+                if (title) title.textContent = 'Sign in to continue';
+                if (desc) desc.textContent = 'Create a free account or log in to apply for jobs, track applications, and more.';
+                if (loginBtn) loginBtn.href = '/Account/Login';
+                if (regBtn) regBtn.href = '/Account/Register';
+            }
+            authModal.classList.remove('hidden');
+            authDismissed = false;
+        }
+
+        function dismissAuthModal() {
+            if (!authModal) return;
+            authModal.classList.add('hidden');
+            authDismissed = true;
+            sessionStorage.setItem('authDismissed', '1');
+            clearInterval(countdownTimer);
+        }
+
+        // 60-second auto-trigger for guests
+        if (authModal && !authDismissed) {
+            let secs = 60;
+            const numEl = document.getElementById('countdownNum');
+            const ringWrapper = document.getElementById('countdownRingWrapper');
+            countdownTimer = setInterval(() => {
+                secs--;
+                if (numEl) numEl.textContent = secs;
+                if (secs <= 0) {
+                    clearInterval(countdownTimer);
+                    if (!authDismissed) {
+                        if (ringWrapper) ringWrapper.classList.remove('hidden');
+                        openAuthModal('candidate');
+                    }
+                }
+            }, 1000);
+        }
+
+        // Escape key closes slide-over and modal
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeJobDetails();
+                dismissAuthModal();
+            }
+        });
+    </script>
+</body>
+</html>

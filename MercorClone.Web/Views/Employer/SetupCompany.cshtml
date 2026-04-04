@@ -1,0 +1,61 @@
+@model MercorClone.Web.Models.ViewModels.Employer.CompanySetupViewModel
+@{ 
+    ViewData["Title"] = "Setup Company"; 
+}
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow border-0">
+                <div class="card-header bg-dark text-white p-4">
+                    <h3 class="mb-0">Complete Your B2B Profile</h3>
+                    <small>Tell us about your company to start hiring AI-vetted talent.</small>
+                </div>
+                <div class="card-body p-4 p-md-5">
+                    <form asp-action="SetupCompany" method="post">
+                        <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+                        <div class="mb-3">
+                            <label asp-for="CompanyName" class="form-label fw-bold"></label>
+                            <input asp-for="CompanyName" class="form-control" placeholder="e.g. Acme Corp" />
+                            <span asp-validation-for="CompanyName" class="text-danger"></span>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label asp-for="WebsiteUrl" class="form-label fw-bold"></label>
+                                <input asp-for="WebsiteUrl" class="form-control" placeholder="https://www.example.com" />
+                                <span asp-validation-for="WebsiteUrl" class="text-danger"></span>
+                            </div>
+                            <div class="col-md-6">
+                                <label asp-for="Industry" class="form-label fw-bold"></label>
+                                <input asp-for="Industry" class="form-control" placeholder="e.g. Fintech, Healthcare" />
+                                <span asp-validation-for="Industry" class="text-danger"></span>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label asp-for="YourJobTitle" class="form-label fw-bold"></label>
+                            <input asp-for="YourJobTitle" class="form-control" placeholder="e.g. HR Manager, CTO" />
+                            <span asp-validation-for="YourJobTitle" class="text-danger"></span>
+                        </div>
+
+                        <div class="mb-4">
+                            <label asp-for="CompanyDescription" class="form-label fw-bold"></label>
+                            <textarea asp-for="CompanyDescription" class="form-control" rows="5" placeholder="Briefly describe what your company does and your work culture..."></textarea>
+                            <span asp-validation-for="CompanyDescription" class="text-danger"></span>
+                        </div>
+
+                        <div class="d-grid mt-2">
+                            <button type="submit" class="btn btn-primary btn-lg">Save & Continue to Dashboard</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+}

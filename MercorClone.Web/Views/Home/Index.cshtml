@@ -1,0 +1,928 @@
+﻿@model IEnumerable<MercorClone.Web.Models.Entities.JobPost>
+
+@{
+    ViewData["Title"] = "Job Board";
+    Layout = null;
+    var isAuthenticated = User.Identity?.IsAuthenticated == true;
+    var userType        = ViewBag.UserType as string ?? "";
+    var userFullName    = ViewBag.UserFullName as string ?? "My Account";
+    var userInitial     = ViewBag.UserInitial as string ?? "?";
+    var phoneVerified   = (bool?)ViewBag.PhoneVerified ?? false;
+    var profileImageUrl = ViewBag.ProfileImageUrl as string;
+    bool isEmployer     = userType == "Employer";
+    bool isCandidate    = userType == "Candidate";
+}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - JobConnect</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: { extend: {
+                colors: { primary: '#7c3aed', primaryHover: '#6d28d9' },
+                fontFamily: { sans: ['Inter','ui-sans-serif','system-ui','sans-serif'] }
+            }}
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        .review-track { display: flex; transition: transform 0.5s cubic-bezier(0.25,0.46,0.45,0.94); }
+        .review-slide { min-width: 320px; max-width: 320px; }
+
+        /* ── Indeed-style split layout ─────────────────────────── */
+        #jobBoard {
+            display: flex;
+            gap: 0;
+            align-items: flex-start;
+            min-height: 600px;
+        }
+
+        /* Left: scrollable job list */
+        #jobListCol {
+            width: 42%;
+            flex-shrink: 0;
+            border-right: 1px solid #e5e7eb;
+            overflow-y: auto;
+            max-height: calc(100vh - 130px);
+            position: sticky;
+            top: 130px;
+        }
+        #jobListCol::-webkit-scrollbar { display: none; }
+        #jobListCol { scrollbar-width: none; }
+
+        /* Right: sticky job detail */
+        #jobDetailCol {
+            flex: 1;
+            position: sticky;
+            top: 130px;
+            height: calc(100vh - 130px);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: #fff;
+        }
+
+        /* Empty state for detail panel */
+        #jobDetailEmpty {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #9ca3af;
+            gap: 12px;
+            padding: 2rem;
+        }
+        #jobDetailContent { display: none; flex-direction: column; height: 100%; }
+        #jobDetailContent.visible { display: flex; }
+
+        /* Job list rows */
+        .job-row {
+            display: block;
+            padding: 16px 20px;
+            border-bottom: 1px solid #f3f4f6;
+            cursor: pointer;
+            transition: background 0.15s;
+            text-decoration: none;
+            color: inherit;
+        }
+        .job-row:hover   { background: #faf5ff; }
+        .job-row.active  { background: #f5f3ff; border-left: 3px solid #7c3aed; padding-left: 17px; }
+        .job-row.active .job-row-title { color: #7c3aed; }
+
+        /* Detail body scroll */
+        #detailBody   { flex: 1; overflow-y: auto; }
+        #detailBody::-webkit-scrollbar { display: none; }
+        #detailBody { scrollbar-width: none; }
+        #detailFooter { flex-shrink: 0; padding: 1rem 1.5rem; border-top: 1px solid #f1f5f9; background: #fff; }
+
+        /* Responsive: stack on mobile */
+        @@media (max-width: 768px) {
+            #jobListCol   { width: 100%; max-height: none; position: relative; top: 0; border-right: none; }
+            #jobDetailCol { display: none !important; }
+            #jobBoard     { flex-direction: column; }
+        }
+        #profileMenu {
+            transform-origin: top right;
+            transition: opacity 0.15s ease, transform 0.15s ease;
+            display: none;
+        }
+        #profileMenu.open {
+            display: block;
+            opacity: 1;
+            transform: scale(1);
+        }
+    </style>
+</head>
+<body class="bg-white font-sans text-gray-900 antialiased overflow-x-hidden">
+
+@* ── ANNOUNCEMENT BAR ── *@
+@{
+    var announcement = ViewBag.Announcement as string;
+    var announcementType = ViewBag.AnnouncementType as string ?? "info"; // info | promo | warning
+    var announcementBg = announcementType == "promo"   ? "bg-primary"
+                       : announcementType == "warning" ? "bg-amber-500"
+                                                       : "bg-gray-900";
+}
+<div id="announcementBar" class="@announcementBg text-white text-xs font-medium py-2 px-4 text-center relative">
+    <span>
+        @if (!string.IsNullOrEmpty(announcement))
+        {
+            @announcement
+        }
+        else
+        {
+            <span>🚀 <strong>JobConnect is now live!</strong> — Post your first job free for 30 days. <a href="/employer/jobs/create" class="underline font-bold hover:opacity-80">Get started →</a></span>
+        }
+    </span>
+    <button onclick="document.getElementById('announcementBar').style.display='none'"
+            class="absolute right-3 top-1/2 -translate-y-1/2 opacity-60 hover:opacity-100 transition-opacity text-base leading-none">
+        ×
+    </button>
+</div>
+
+@* ── TOAST ── *@
+@if (TempData["Success"] != null || TempData["Error"] != null || TempData["Warning"] != null)
+{
+    var msg    = (TempData["Success"] ?? TempData["Error"] ?? TempData["Warning"])?.ToString();
+    var colour = TempData["Success"] != null ? "bg-green-600" : TempData["Error"] != null ? "bg-red-600" : "bg-amber-500";
+    <div id="toastBar" class="fixed top-4 left-1/2 -translate-x-1/2 z-[100] @colour text-white text-sm font-medium px-5 py-2.5 rounded-full shadow-lg flex items-center gap-3">
+        <span>@msg</span>
+        <button onclick="this.parentElement.style.opacity='0'" class="opacity-70 hover:opacity-100 font-bold">x</button>
+    </div>
+    <script>setTimeout(()=>{ const t=document.getElementById('toastBar'); if(t) t.style.opacity='0'; },5000);</script>
+}
+
+@* ── NAVBAR ── *@
+<nav class="bg-white border-b border-gray-200 sticky top-0 z-40">
+    <div class="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between h-16 items-center">
+            <div class="flex items-center gap-8">
+                <a href="/" class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shadow-sm">
+                        <i data-lucide="briefcase" class="text-white w-5 h-5"></i>
+                    </div>
+                    <span class="text-xl font-bold tracking-tight text-gray-900">JobConnect</span>
+                </a>
+                <div class="hidden md:flex items-center gap-6 text-sm font-medium text-gray-600">
+                    <a href="/" class="text-gray-900 font-semibold">Home</a>
+                    <a href="#company-reviews" class="hover:text-primary transition-colors">Reviews</a>
+                    @if (isCandidate)
+                    {
+                        <a href="/Candidate/Dashboard" class="hover:text-primary transition-colors flex items-center gap-1.5">
+                            <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Dashboard
+                        </a>
+                        <a href="/Candidate/JobActivity" class="hover:text-primary transition-colors">My Applications</a>
+                    }
+                    @if (isEmployer)
+                    {
+                        <a href="/Employer/Dashboard" class="hover:text-primary transition-colors flex items-center gap-1.5">
+                            <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Dashboard
+                        </a>
+                        <a href="/employer/jobs/create" class="hover:text-primary transition-colors">Post a Job</a>
+                    }
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3">
+                @if (isAuthenticated)
+                {
+                    @if (isEmployer)
+                    {
+                        <a href="/employer/jobs/create" class="hidden sm:flex items-center gap-1.5 text-sm font-semibold bg-primary text-white px-4 py-2 rounded-full hover:bg-primaryHover transition-colors shadow-sm">
+                            <i data-lucide="plus" class="w-4 h-4"></i> Post a Job
+                        </a>
+                    }
+
+                    @* Messages *@
+                    <a href="#" title="Messages"
+                       class="relative w-9 h-9 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition-all">
+                        <i data-lucide="message-square" class="w-4 h-4 text-gray-600"></i>
+                    </a>
+
+                    @* Notification bell *@
+                    <button class="relative w-9 h-9 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition-all">
+                        <i data-lucide="bell" class="w-4 h-4 text-gray-600"></i>
+                        <span class="absolute -top-0.5 -right-0.5 w-4 h-4 bg-primary text-white text-[9px] rounded-full flex items-center justify-center font-bold">3</span>
+                    </button>
+
+                    @* ── PROFILE DROPDOWN ── *@
+                    <div class="relative" id="profileDropdownWrapper">
+                        <button id="profileBtn" onclick="toggleProfileMenu(event)" aria-haspopup="true" aria-expanded="false"
+                                class="flex items-center gap-2 group focus:outline-none">
+                            <div class="w-9 h-9 rounded-full overflow-hidden border-2 border-gray-200 group-hover:border-primary transition-all flex-shrink-0 flex items-center justify-center @(isEmployer ? "bg-purple-100" : "bg-blue-100")">
+                                @if (!string.IsNullOrEmpty(profileImageUrl))
+                                {
+                                    <img src="@profileImageUrl" alt="@userFullName" class="w-full h-full object-cover" />
+                                }
+                                else
+                                {
+                                    <span class="text-sm font-bold @(isEmployer ? "text-primary" : "text-blue-600")">@userInitial</span>
+                                }
+                            </div>
+                            <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-gray-400 hidden md:block group-hover:text-primary transition-colors"></i>
+                        </button>
+
+                        @* Dropdown panel *@
+                        <div id="profileMenu"
+                             class="absolute right-0 top-12 w-72 bg-white border border-gray-200 rounded-2xl shadow-2xl z-50 overflow-hidden"
+                             role="menu">
+
+                            @* Header *@
+                            <div class="px-4 py-4 border-b border-gray-100 flex items-center gap-3">
+                                <div class="w-12 h-12 rounded-full border-2 border-gray-200 flex-shrink-0 overflow-hidden flex items-center justify-center @(isEmployer ? "bg-purple-100" : "bg-blue-100")">
+                                    @if (!string.IsNullOrEmpty(profileImageUrl))
+                                    {
+                                        <img src="@profileImageUrl" alt="@userFullName" class="w-full h-full object-cover" />
+                                    }
+                                    else
+                                    {
+                                        <span class="text-lg font-bold @(isEmployer ? "text-primary" : "text-blue-600")">@userInitial</span>
+                                    }
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="font-bold text-sm text-gray-900 truncate">@userFullName</p>
+                                    <div class="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                        <span class="text-xs font-medium px-2 py-0.5 rounded-full @(isEmployer ? "bg-purple-100 text-primary" : "bg-blue-100 text-blue-700")">
+                                            @(isEmployer ? "Employer" : "Candidate")
+                                        </span>
+                                        @if (!phoneVerified)
+                                        {
+                                            <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 flex items-center gap-1">
+                                                <i data-lucide="alert-triangle" class="w-3 h-3"></i> Verify phone
+                                            </span>
+                                        }
+                                    </div>
+                                </div>
+                                <a href="@(isEmployer ? "/Employer/Dashboard" : "/Candidate/EditProfile")"
+                                   class="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-all flex-shrink-0" title="Edit">
+                                    <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+                                </a>
+                            </div>
+
+                            @* CANDIDATE menu items *@
+                            @if (isCandidate)
+                            {
+                                <div class="py-1.5">
+                                    <a href="/Candidate/EditProfile" role="menuitem"
+                                       class="flex items-center justify-between px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors group">
+                                        <div class="flex items-center gap-3">
+                                            <i data-lucide="file-text" class="w-4 h-4 text-gray-400 group-hover:text-primary transition-colors"></i>
+                                            CV and experience
+                                        </div>
+                                    </a>
+                                    <a href="/Candidate/JobPreferences" role="menuitem"
+                                       class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors group">
+                                        <i data-lucide="sliders-horizontal" class="w-4 h-4 text-gray-400 group-hover:text-primary transition-colors"></i>
+                                        Job preferences
+                                    </a>
+                                    <a href="/Candidate/JobActivity" role="menuitem"
+                                       class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors group">
+                                        <i data-lucide="activity" class="w-4 h-4 text-gray-400 group-hover:text-primary transition-colors"></i>
+                                        Job activity
+                                    </a>
+                                    <a href="/Candidate/Dashboard" role="menuitem"
+                                       class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors group">
+                                        <i data-lucide="heart" class="w-4 h-4 text-gray-400 group-hover:text-primary transition-colors"></i>
+                                        Saved jobs
+                                    </a>
+                                </div>
+                                <div class="border-t border-gray-100 py-1.5">
+                                    <a href="#" role="menuitem"
+                                       class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors group">
+                                        <i data-lucide="star" class="w-4 h-4 text-gray-400 group-hover:text-primary transition-colors"></i>
+                                        Reviews and contributions
+                                    </a>
+                                </div>
+                            }
+
+                            @* EMPLOYER menu items *@
+                            @if (isEmployer)
+                            {
+                                <div class="py-1.5">
+                                    <a href="/Employer/Dashboard" role="menuitem"
+                                       class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors group">
+                                        <i data-lucide="layout-dashboard" class="w-4 h-4 text-gray-400 group-hover:text-primary transition-colors"></i>
+                                        Employer Dashboard
+                                    </a>
+                                    <a href="/employer/jobs/create" role="menuitem"
+                                       class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors group">
+                                        <i data-lucide="plus-circle" class="w-4 h-4 text-gray-400 group-hover:text-primary transition-colors"></i>
+                                        Post a New Job
+                                    </a>
+                                    <a href="/Employer/Dashboard" role="menuitem"
+                                       class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors group">
+                                        <i data-lucide="briefcase" class="w-4 h-4 text-gray-400 group-hover:text-primary transition-colors"></i>
+                                        My Job Listings
+                                    </a>
+                                </div>
+                                <div class="border-t border-gray-100 py-1.5">
+                                    <a href="#" role="menuitem"
+                                       class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors group">
+                                        <i data-lucide="credit-card" class="w-4 h-4 text-gray-400 group-hover:text-primary transition-colors"></i>
+                                        Billing and Subscription
+                                    </a>
+                                </div>
+                            }
+
+                            @* Shared bottom *@
+                            <div class="border-t border-gray-100 py-1.5">
+                                <a href="/Account/Settings" role="menuitem"
+                                   class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors group">
+                                    <i data-lucide="settings" class="w-4 h-4 text-gray-400 group-hover:text-primary transition-colors"></i>
+                                    Account settings
+                                </a>
+                                <a href="#" role="menuitem"
+                                   class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors group">
+                                    <i data-lucide="bell" class="w-4 h-4 text-gray-400 group-hover:text-primary transition-colors"></i>
+                                    Notifications
+                                </a>
+                                <a href="#" role="menuitem"
+                                   class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors group">
+                                    <i data-lucide="help-circle" class="w-4 h-4 text-gray-400 group-hover:text-primary transition-colors"></i>
+                                    Help centre
+                                </a>
+                            </div>
+
+                            @* Sign out *@
+                            <div class="border-t border-gray-100 p-2">
+                                <form action="/Account/Logout" method="post">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" role="menuitem"
+                                            class="w-full flex items-center justify-between px-3 py-2.5 text-sm text-gray-600 hover:bg-red-50 hover:text-red-600 rounded-xl transition-all group">
+                                        <div class="flex items-center gap-3">
+                                            <i data-lucide="log-out" class="w-4 h-4 text-gray-400 group-hover:text-red-500 transition-colors"></i>
+                                            Sign out
+                                        </div>
+                                        <i data-lucide="arrow-right" class="w-3.5 h-3.5 text-gray-300 group-hover:text-red-400 transition-colors"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    @* ── END DROPDOWN ── *@
+                }
+                else
+                {
+                    <button onclick="openAuthModal('employer')" class="hidden sm:block text-sm font-medium text-gray-600 hover:text-primary transition-colors">Post a Job</button>
+                    <a href="/Account/Login" class="text-sm font-semibold bg-primary text-white px-4 py-2 rounded-full hover:bg-primaryHover transition-colors shadow-sm">Login</a>
+                    <a href="/Account/Register" class="hidden sm:block text-sm font-medium text-gray-600 hover:text-primary transition-colors">Sign Up</a>
+                }
+            </div>
+        </div>
+    </div>
+</nav>
+
+@* ── SEARCH ── *@
+<div class="bg-white pt-8 pb-6 border-b border-gray-100">
+    <div class="max-w-4xl mx-auto px-4">
+        <p class="text-center text-sm text-gray-500 mb-4 font-medium">Find your next opportunity — thousands of jobs updated daily</p>
+        <form method="get" action="/Search" class="bg-white rounded-full shadow-sm border border-gray-300 p-1.5 flex flex-col md:flex-row items-center gap-2 focus-within:ring-2 focus-within:ring-primary transition-all">
+            <div class="flex-1 flex items-center px-4 w-full">
+                <i data-lucide="search" class="text-gray-400 w-5 h-5 mr-3 flex-shrink-0"></i>
+                <input type="text" name="q" placeholder="Job title, keywords, or company" class="w-full py-2.5 text-sm focus:outline-none text-gray-900 bg-transparent placeholder-gray-500" />
+            </div>
+            <div class="hidden md:block w-px h-8 bg-gray-200"></div>
+            <div class="flex-1 flex items-center px-4 w-full">
+                <i data-lucide="map-pin" class="text-gray-400 w-5 h-5 mr-3 flex-shrink-0"></i>
+                <input type="text" name="l" placeholder='City, state, or "remote"' class="w-full py-2.5 text-sm focus:outline-none text-gray-900 bg-transparent placeholder-gray-500" />
+            </div>
+            <button type="submit" class="w-full md:w-auto bg-primary text-white px-8 py-2.5 rounded-full text-sm font-semibold hover:bg-primaryHover transition-colors shadow-sm">Search</button>
+        </form>
+    </div>
+</div>
+
+@* ── COMPANY REVIEWS SLIDER ── *@
+<div id="company-reviews" class="border-b border-gray-100 py-10">
+    <div class="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between mb-6">
+            <h2 class="text-lg font-bold text-gray-900">Talk With Industry Leaders</h2>
+            <div class="flex items-center gap-2">
+                <button id="reviewPrev" onclick="shiftReviews(-1)" disabled class="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 hover:border-primary transition-all disabled:opacity-30 disabled:cursor-not-allowed">
+                    <i data-lucide="chevron-left" class="w-4 h-4 text-gray-600"></i>
+                </button>
+                <button id="reviewNext" onclick="shiftReviews(1)" class="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 hover:border-primary transition-all">
+                    <i data-lucide="chevron-right" class="w-4 h-4 text-gray-600"></i>
+                </button>
+            </div>
+        </div>
+        <div class="overflow-hidden">
+            <div id="reviewTrack" class="review-track gap-5">
+                @{
+                    var companies = new[] {
+                        new { Name = "Sam's Club",  Reviews = "28,221",  Color = "bg-blue-100 text-blue-600",    Initials = "SC",  Rating = 4, Quote = "Great benefits and flexible hours. Management is very supportive of career growth." },
+                        new { Name = "UPS",         Reviews = "63,360",  Color = "bg-yellow-100 text-yellow-700", Initials = "UPS", Rating = 3, Quote = "Physically demanding but solid pay and great coworkers make it worth it." },
+                        new { Name = "Burger King", Reviews = "58,413",  Color = "bg-orange-100 text-orange-600", Initials = "BK",  Rating = 3, Quote = "Fast-paced environment. Leadership could improve but entry level is a great start." },
+                        new { Name = "TJ Maxx",     Reviews = "13,736",  Color = "bg-red-100 text-red-600",       Initials = "TJ",  Rating = 4, Quote = "Fun workplace culture. Employees genuinely look out for each other." },
+                        new { Name = "Hobby Lobby", Reviews = "6,893",   Color = "bg-green-100 text-green-600",   Initials = "HL",  Rating = 4, Quote = "Relaxed atmosphere and great team. Work-life balance is respected." },
+                        new { Name = "Amazon",      Reviews = "124,510", Color = "bg-indigo-100 text-indigo-600", Initials = "AMZ", Rating = 3, Quote = "High intensity but the learning opportunities are unmatched in the industry." },
+                        new { Name = "Apple",       Reviews = "41,200",  Color = "bg-gray-100 text-gray-600",     Initials = "APL", Rating = 5, Quote = "Incredible culture of innovation. Being part of something this meaningful is rare." },
+                    };
+                }
+                @foreach (var company in companies)
+                {
+                    <div class="review-slide bg-white border border-gray-200 rounded-2xl p-5 flex-shrink-0 hover:shadow-md hover:border-gray-300 transition-all">
+                        <div class="flex items-start gap-4 mb-3">
+                            <div class="w-12 h-12 rounded-xl border border-gray-200 flex items-center justify-center flex-shrink-0 @company.Color font-bold text-sm">@company.Initials</div>
+                            <div>
+                                <h4 class="font-bold text-base text-gray-900">@company.Name</h4>
+                                <div class="flex items-center gap-1.5 mt-0.5">
+                                    <div class="flex text-amber-400">
+                                        @for (int s = 1; s <= 5; s++)
+                                        {
+                                            <svg class="w-3.5 h-3.5 fill-current @(s > company.Rating ? "text-gray-200" : "")" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+                                        }
+                                    </div>
+                                    <a href="#" class="text-primary text-xs hover:underline font-medium">@company.Reviews reviews</a>
+                                </div>
+                            </div>
+                        </div>
+                        <p class="text-sm text-gray-500 italic mb-4 line-clamp-2">"@company.Quote"</p>
+                        <div class="flex items-center gap-5 text-sm text-gray-500 font-medium">
+                            <a href="#" class="hover:text-gray-900 hover:underline transition-colors">Salaries</a>
+                            <a href="#" class="hover:text-gray-900 hover:underline transition-colors">Q&amp;A</a>
+                            <a href="#" class="hover:text-gray-900 hover:underline transition-colors">Open jobs</a>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+        <div id="reviewDots" class="flex justify-center gap-2 mt-5"></div>
+    </div>
+</div>
+
+@* ── JOB GRID ── *@
+<main class="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-16">
+
+    <!-- Section header + filters -->
+    <div class="flex flex-wrap items-center justify-between gap-4 mb-0 pb-4 border-b border-gray-200">
+        <div>
+            <h2 class="text-lg font-bold text-gray-900">
+                @Model.Count() job@(Model.Count() != 1 ? "s" : "") found
+            </h2>
+            <p class="text-sm text-gray-500 mt-0.5">Based on your location and recent activity</p>
+        </div>
+        <div class="flex items-center gap-3">
+            <select class="text-sm border border-gray-200 rounded-lg py-2 px-3 focus:outline-none focus:border-primary bg-white font-medium text-gray-700">
+                <option>Most relevant</option>
+                <option>Date posted</option>
+                <option>Salary (high to low)</option>
+            </select>
+            <button class="text-sm border border-gray-200 rounded-lg py-2 px-3 hover:bg-gray-50 text-gray-600 font-medium flex items-center gap-1.5">
+                <i data-lucide="sliders-horizontal" class="w-4 h-4"></i> Filters
+            </button>
+        </div>
+    </div>
+
+    <!-- Indeed-style board: list left, detail right -->
+    <div id="jobBoard">
+
+        <!-- ── LEFT: Job list ── -->
+        <div id="jobListCol">
+            @if (!Model.Any())
+            {
+                <div class="p-12 text-center">
+                    <i data-lucide="search-x" class="w-12 h-12 mx-auto mb-4 text-gray-200"></i>
+                    <p class="font-semibold text-gray-700 mb-1">No jobs found</p>
+                    <p class="text-sm text-gray-400">Try adjusting your filters or check back later.</p>
+                    @if (isEmployer)
+                    {
+                        <a href="/employer/jobs/create" class="inline-block mt-4 text-sm text-primary font-semibold hover:underline">
+                            Post the first job →
+                        </a>
+                    }
+                </div>
+            }
+            @foreach (var job in Model)
+            {
+                <article onclick="openJobDetails(this)"
+                         data-id="@job.Id"
+                         data-title="@job.Title"
+                         data-company="@(job.Company?.Name ?? "")"
+                         data-website="@(job.Company?.WebsiteUrl ?? "")"
+                         data-location="@(job.LocationType ?? "Remote")"
+                         data-contract="@(job.ContractType ?? "Full-time")"
+                         data-country="@(job.Country ?? "")"
+                         data-skills="@(job.RequiredSkills != null ? string.Join(", ", job.RequiredSkills) : "")"
+                         data-salary="@(job.MinSalary.HasValue && job.MaxSalary.HasValue ? "$" + job.MinSalary.Value.ToString("N0") + " – $" + job.MaxSalary.Value.ToString("N0") : "Competitive")"
+                         data-desc="@job.JobDescriptionHtml"
+                         data-posted="@(job.PublishedAt.HasValue ? job.PublishedAt.Value.ToString("MMM d, yyyy") : "")"
+                         class="job-row">
+
+                    <!-- Company logo + title -->
+                    <div class="flex items-start gap-3">
+                        <div class="w-10 h-10 rounded-lg bg-purple-50 border border-purple-100 flex items-center justify-center font-bold text-primary text-sm flex-shrink-0 mt-0.5">
+                            @((job.Company?.Name ?? "?").Substring(0, 1).ToUpper())
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <h3 class="job-row-title font-semibold text-gray-900 text-sm leading-snug">@job.Title</h3>
+                            <p class="text-xs text-gray-500 mt-0.5">
+                                @(job.Company?.Name ?? "Unknown Company")
+                                @if (!string.IsNullOrEmpty(job.Country))
+                                { <span class="text-gray-300 mx-1">·</span><span>@job.Country</span> }
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Salary -->
+                    @if (job.MinSalary.HasValue && job.MaxSalary.HasValue)
+                    {
+                        <p class="text-sm font-semibold text-gray-800 mt-2">
+                            $@job.MinSalary.Value.ToString("N0") – $@job.MaxSalary.Value.ToString("N0")
+                            <span class="text-xs font-normal text-gray-400">/ year</span>
+                        </p>
+                    }
+
+                    <!-- Badges -->
+                    <div class="flex flex-wrap items-center gap-1.5 mt-2">
+                        <span class="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded font-medium">@job.LocationType</span>
+                        <span class="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded font-medium">@job.ContractType</span>
+                        @if (job.RequiredSkills != null && job.RequiredSkills.Any())
+                        {
+                            <span class="text-xs text-primary bg-purple-50 px-2 py-0.5 rounded font-medium">@job.RequiredSkills.First()</span>
+                        }
+                    </div>
+
+                    <!-- Description snippet -->
+                    @if (!string.IsNullOrEmpty(job.JobDescriptionHtml))
+                    {
+                        <p class="text-xs text-gray-500 mt-2 line-clamp-2 leading-relaxed">
+                            @System.Text.RegularExpressions.Regex.Replace(job.JobDescriptionHtml, "<[^>]+>", "")
+                        </p>
+                    }
+
+                    <!-- Footer meta -->
+                    <div class="flex items-center justify-between mt-3">
+                        @if (job.PublishedAt.HasValue)
+                        {
+                            <span class="text-xs text-gray-400">
+                                @{
+                                    var daysAgo = (DateTime.UtcNow - job.PublishedAt.Value).Days;
+                                    @(daysAgo == 0 ? "Today" : daysAgo == 1 ? "1 day ago" : $"{daysAgo} days ago")
+                                }
+                            </span>
+                        }
+                        <span class="text-xs font-semibold text-primary">View job →</span>
+                    </div>
+
+                </article>
+            }
+
+            <!-- Pagination -->
+            <div class="flex items-center justify-center gap-1 py-6 px-4 border-t border-gray-100 text-sm font-medium text-gray-600">
+                <button class="px-3 py-1.5 text-gray-300 cursor-not-allowed flex items-center gap-1">
+                    <i data-lucide="chevron-left" class="w-4 h-4"></i> Prev
+                </button>
+                <button class="w-8 h-8 flex items-center justify-center rounded border border-primary bg-purple-50 text-primary text-xs font-bold">1</button>
+                <button class="w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100 text-xs">2</button>
+                <button class="w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100 text-xs">3</button>
+                <button class="px-3 py-1.5 hover:text-gray-900 transition-colors flex items-center gap-1">
+                    Next <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </div><!-- /jobListCol -->
+
+        <!-- ── RIGHT: Job detail panel ── -->
+        <div id="jobDetailCol">
+
+            <!-- Empty state — shown before any job is selected -->
+            <div id="jobDetailEmpty">
+                <i data-lucide="mouse-pointer-click" class="w-10 h-10 text-gray-200"></i>
+                <p class="text-sm font-medium text-gray-400">Select a job to see the details</p>
+            </div>
+
+            <!-- Populated detail — hidden until a job is clicked -->
+            <div id="jobDetailContent">
+
+                <!-- Top action bar -->
+                <div class="flex items-center justify-between px-6 py-3 border-b border-gray-100 flex-shrink-0">
+                    <div class="flex items-center gap-1.5 text-xs text-gray-400">
+                        <button onclick="expandJob()"
+                                class="flex items-center gap-1 hover:text-primary transition-colors font-medium">
+                            <i data-lucide="maximize-2" class="w-3.5 h-3.5"></i> Full page
+                        </button>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <button class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-primary transition-all" title="Save job">
+                            <i data-lucide="bookmark" class="w-4 h-4"></i>
+                        </button>
+                        <button class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-all" title="Share">
+                            <i data-lucide="share-2" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Scrollable detail body -->
+                <div id="detailBody">
+
+                    <!-- Hero: title + company -->
+                    <div class="px-6 pt-6 pb-5">
+                        <div class="flex items-start gap-4">
+                            <div id="soLogoWrap"
+                                 class="w-14 h-14 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center font-bold text-primary text-xl flex-shrink-0">
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <h1 id="soTitle" class="text-xl font-bold text-gray-900 leading-snug"></h1>
+                                <p id="soCompany" class="text-sm font-semibold text-primary mt-1"></p>
+                                <a id="soWebsite" href="#" target="_blank" rel="noopener noreferrer"
+                                   class="text-xs text-gray-400 hover:text-primary hover:underline transition-colors block mt-0.5"></a>
+                            </div>
+                        </div>
+
+                        <!-- Salary -->
+                        <div id="soSalaryBig" class="text-2xl font-bold text-gray-900 mt-4"></div>
+                        <p class="text-xs text-gray-400 mt-0.5">Estimated annual salary</p>
+
+                        <!-- Meta row -->
+                        <div class="flex flex-wrap gap-2 mt-4">
+                            <span class="text-xs font-medium bg-gray-100 text-gray-600 px-3 py-1.5 rounded-full flex items-center gap-1.5">
+                                <i data-lucide="briefcase" class="w-3 h-3"></i> <span id="soContractText"></span>
+                            </span>
+                            <span class="text-xs font-medium bg-gray-100 text-gray-600 px-3 py-1.5 rounded-full flex items-center gap-1.5">
+                                <i data-lucide="map-pin" class="w-3 h-3"></i> <span id="soLocationText"></span>
+                            </span>
+                            <span class="text-xs font-medium text-gray-400 flex items-center gap-1.5 px-1">
+                                <i data-lucide="calendar" class="w-3 h-3"></i> <span id="soPostedText"></span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Divider -->
+                    <div class="border-t border-gray-100 mx-6"></div>
+
+                    <!-- Skills -->
+                    <div class="px-6 py-4">
+                        <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Required Skills</h3>
+                        <div id="soSkills" class="flex flex-wrap gap-2"></div>
+                    </div>
+
+                    <div class="border-t border-gray-100 mx-6"></div>
+
+                    <!-- Full description -->
+                    <div class="px-6 py-5 pb-8">
+                        <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">Job Description</h3>
+                        <div id="soDesc" class="prose prose-sm max-w-none text-gray-700 leading-relaxed text-sm
+                             [&_h2]:text-base [&_h2]:font-bold [&_h2]:text-gray-900 [&_h2]:mt-5 [&_h2]:mb-2
+                             [&_h3]:text-sm [&_h3]:font-bold [&_h3]:text-gray-800 [&_h3]:mt-4 [&_h3]:mb-1.5
+                             [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1
+                             [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:space-y-1
+                             [&_strong]:text-gray-900 [&_a]:text-primary [&_a]:underline"></div>
+                    </div>
+
+                </div><!-- /detailBody -->
+
+                <!-- ── Sticky apply footer ── -->
+                <div id="detailFooter">
+                    @if (isAuthenticated && isCandidate)
+                    {
+                        <form id="applyForm" action="/Candidate/Apply" method="post">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" id="applyJobId" name="jobId" value="" />
+                            <button type="submit"
+                                    class="w-full bg-primary text-white py-3 rounded-xl text-sm font-bold hover:bg-primaryHover transition-colors shadow-sm tracking-wide">
+                                Apply Now
+                            </button>
+                        </form>
+                        <p class="text-xs text-center text-gray-400 mt-2">Your profile will be sent to the employer</p>
+                    }
+                    else if (isAuthenticated && isEmployer)
+                    {
+                        <div class="w-full bg-gray-50 border border-gray-200 text-gray-500 py-3 rounded-xl text-sm text-center">
+                            Employers cannot apply to jobs.
+                        </div>
+                    }
+                    else
+                    {
+                        <button onclick="openAuthModal('candidate')"
+                                class="w-full bg-primary text-white py-3 rounded-xl text-sm font-bold hover:bg-primaryHover transition-colors shadow-sm">
+                            Sign in to Apply
+                        </button>
+                        <p class="text-xs text-center text-gray-400 mt-2">Free account required · Takes 2 minutes</p>
+                    }
+                </div>
+
+            </div><!-- /jobDetailContent -->
+        </div><!-- /jobDetailCol -->
+
+    </div><!-- /jobBoard -->
+</main>
+
+@* ── AUTH MODAL (guests only) ── *@
+@if (!isAuthenticated)
+{
+    <div id="authModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-gray-900/50 backdrop-blur-sm" onclick="dismissAuthModal()"></div>
+        <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 text-center">
+            <div class="w-14 h-14 bg-purple-50 rounded-2xl flex items-center justify-center mx-auto mb-5">
+                <i data-lucide="lock" class="w-7 h-7 text-primary"></i>
+            </div>
+            <h3 id="authModalTitle" class="text-xl font-bold text-gray-900 mb-2">Sign in to continue</h3>
+            <p  id="authModalDesc"  class="text-sm text-gray-500 mb-6">Create a free account or log in to apply for jobs and more.</p>
+            <div class="flex flex-col gap-3">
+                <a id="authLoginBtn"    href="/Account/Login"    class="w-full bg-primary text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-primaryHover transition-colors shadow-sm">Log In</a>
+                <a id="authRegisterBtn" href="/Account/Register" class="w-full border border-gray-200 text-gray-700 py-2.5 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors">Create Free Account</a>
+                <button onclick="dismissAuthModal()" class="text-xs text-gray-400 hover:text-gray-600 mt-1 transition-colors">Maybe later</button>
+            </div>
+        </div>
+    </div>
+}
+
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+    lucide.createIcons();
+
+    // ── Profile Dropdown ─────────────────────────────────
+    const profileMenu = document.getElementById('profileMenu');
+
+    function toggleProfileMenu(e) {
+        e.stopPropagation();
+        if (!profileMenu) return;
+        const isOpen = profileMenu.classList.contains('open');
+        profileMenu.classList.toggle('open', !isOpen);
+        document.getElementById('profileBtn')?.setAttribute('aria-expanded', String(!isOpen));
+    }
+
+    document.addEventListener('click', (e) => {
+        if (!profileMenu) return;
+        const wrapper = document.getElementById('profileDropdownWrapper');
+        if (wrapper && !wrapper.contains(e.target)) {
+            profileMenu.classList.remove('open');
+            document.getElementById('profileBtn')?.setAttribute('aria-expanded','false');
+        }
+    });
+
+    // ── Review Slider ────────────────────────────────────
+    const track        = document.getElementById('reviewTrack');
+    const dotsEl       = document.getElementById('reviewDots');
+    const CARD_W       = 340;
+    const VISIBLE      = Math.max(1, Math.floor(window.innerWidth / CARD_W));
+    const totalSlides  = track ? track.querySelectorAll('.review-slide').length : 0;
+    const MAX_IDX      = Math.max(0, totalSlides - VISIBLE);
+    let reviewIdx = 0, reviewTimer = null;
+
+    function buildDots() {
+        if (!dotsEl) return;
+        dotsEl.innerHTML = '';
+        for (let i = 0; i <= MAX_IDX; i++) {
+            const d = document.createElement('button');
+            d.className = `h-2 rounded-full transition-all duration-300 ${i===0?'bg-primary w-5':'bg-gray-300 w-2'}`;
+            d.setAttribute('aria-label','Slide '+(i+1));
+            d.onclick = () => { goToReview(i); restartAutoSlide(); };
+            dotsEl.appendChild(d);
+        }
+    }
+
+    function updateDots() {
+        dotsEl?.querySelectorAll('button').forEach((d,i) => {
+            d.className = `h-2 rounded-full transition-all duration-300 ${i===reviewIdx?'bg-primary w-5':'bg-gray-300 w-2'}`;
+        });
+    }
+
+    function goToReview(idx) {
+        reviewIdx = Math.max(0, Math.min(idx, MAX_IDX));
+        if (track) track.style.transform = `translateX(-${reviewIdx * CARD_W}px)`;
+        const prev = document.getElementById('reviewPrev');
+        const next = document.getElementById('reviewNext');
+        if (prev) prev.disabled = reviewIdx === 0;
+        if (next) next.disabled = reviewIdx === MAX_IDX;
+        updateDots();
+    }
+
+    function shiftReviews(dir) { goToReview(reviewIdx + dir); restartAutoSlide(); }
+
+    function restartAutoSlide() {
+        clearInterval(reviewTimer);
+        reviewTimer = setInterval(() => goToReview(reviewIdx < MAX_IDX ? reviewIdx + 1 : 0), 4000);
+    }
+
+    buildDots(); restartAutoSlide();
+   
+
+    // ── Indeed-style job board ───────────────────────────
+    let activeRow = null;
+
+    function openJobDetails(el) {
+        if (!el) return;
+
+        // Highlight row
+        if (activeRow) activeRow.classList.remove('active');
+        el.classList.add('active');
+        activeRow = el;
+
+        // Show detail content, hide empty state
+        document.getElementById('jobDetailEmpty').style.display   = 'none';
+        document.getElementById('jobDetailContent').classList.add('visible');
+
+        // Populate
+        const company = el.dataset.company || '';
+        const website = el.dataset.website || '';
+        const initial = company ? company.charAt(0).toUpperCase() : '?';
+
+        setText('soTitle',       el.dataset.title    || '');
+        setText('soSalaryBig',   el.dataset.salary   || '');
+        setText('soContractText',el.dataset.contract || '');
+        setText('soLocationText',el.dataset.location || '');
+        setText('soPostedText',  el.dataset.posted   ? 'Posted ' + el.dataset.posted : '');
+        setText('soCompany',     company);
+        setText('soLogoWrap',    initial);
+
+        const webEl = document.getElementById('soWebsite');
+        if (webEl) {
+            if (website) {
+                webEl.href        = website.startsWith('http') ? website : 'https://' + website;
+                webEl.textContent = website.replace(/^https?:\/\//, '');
+                webEl.style.display = '';
+            } else {
+                webEl.style.display = 'none';
+            }
+        }
+
+        // Skills
+        const skillsEl = document.getElementById('soSkills');
+        if (skillsEl) {
+            skillsEl.innerHTML = '';
+            const skills = el.dataset.skills || '';
+            if (skills) {
+                skills.split(',').forEach(s => {
+                    s = s.trim(); if (!s) return;
+                    const span = document.createElement('span');
+                    span.className = 'text-xs font-medium bg-purple-50 text-primary border border-purple-100 px-3 py-1.5 rounded-full';
+                    span.textContent = s;
+                    skillsEl.appendChild(span);
+                });
+            } else {
+                skillsEl.innerHTML = '<span class="text-xs text-gray-400">Not specified</span>';
+            }
+        }
+
+        // Description
+        const descEl = document.getElementById('soDesc');
+        if (descEl) descEl.innerHTML = el.dataset.desc || '<p class="text-gray-400">No description provided.</p>';
+
+        // Apply form
+        const applyJobId = document.getElementById('applyJobId');
+        if (applyJobId) applyJobId.value = el.dataset.id || '';
+
+        // Scroll detail to top
+        const body = document.getElementById('detailBody');
+        if (body) body.scrollTop = 0;
+
+        lucide.createIcons();
+    }
+
+    function closeJobDetails() {
+        if (activeRow) { activeRow.classList.remove('active'); activeRow = null; }
+        document.getElementById('jobDetailEmpty').style.display = '';
+        document.getElementById('jobDetailContent').classList.remove('visible');
+    }
+
+    function expandJob() {
+        const id = document.getElementById('applyJobId')?.value;
+        if (id) window.open('/Jobs/' + id, '_blank');
+    }
+
+    function setText(id, val) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val;
+    }
+    document.querySelector('.job-row')?.click();
+
+    // ── Auth Modal ───────────────────────────────────────
+    const authModal   = document.getElementById('authModal');
+    let authDismissed = sessionStorage.getItem('authDismissed') === '1';
+
+    function openAuthModal(intent) {
+        if (!authModal) return;
+        const isEmp = intent === 'employer';
+        document.getElementById('authModalTitle').textContent = isEmp ? 'Sign in as Employer'  : 'Sign in to apply';
+        document.getElementById('authModalDesc').textContent  = isEmp
+            ? 'Log in or create an employer account to post jobs and find top talent.'
+            : 'Create a free candidate account to apply for jobs and track your applications.';
+        document.getElementById('authLoginBtn').href    = isEmp ? '/Account/Login?returnUrl=/employer/jobs/create&role=Employer' : '/Account/Login';
+        document.getElementById('authRegisterBtn').href = isEmp ? '/Account/Register?role=Employer' : '/Account/Register';
+        authModal.classList.remove('hidden');
+        authDismissed = false;
+    }
+
+    function dismissAuthModal() {
+        if (!authModal) return;
+        authModal.classList.add('hidden');
+        authDismissed = true;
+        sessionStorage.setItem('authDismissed','1');
+    }
+
+    if (authModal && !authDismissed) {
+        let s = 60;
+        const t = setInterval(() => { if(--s <= 0) { clearInterval(t); if(!authDismissed) openAuthModal('candidate'); } }, 1000);
+    }
+
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') { closeJobDetails(); dismissAuthModal(); }
+    });
+</script>
+</body>
+</html>

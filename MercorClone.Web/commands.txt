@@ -1,0 +1,6 @@
+Database Commands
+
+dotnet ef migrations add UpdateSchema
+
+
+dotnet ef database update

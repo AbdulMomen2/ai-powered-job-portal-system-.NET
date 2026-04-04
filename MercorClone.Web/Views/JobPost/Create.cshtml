@@ -1,0 +1,780 @@
+@model MercorClone.Web.Models.ViewModels.Employer.CreateJobViewModel
+@{
+    var isEdit    = ViewBag.JobId != null;
+    var pageTitle = isEdit ? "Edit Job Post" : "Post a New Job";
+    ViewData["Title"] = $"{pageTitle} | Mercor";
+}
+
+<!-- Rich-text editor -->
+<link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet" />
+
+<!-- Map -->
+<link  rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+
+<style>
+    /* ── Design tokens ─────────────────────────────────────────── */
+    :root {
+        --brand:      #4f46e5;
+        --brand-dark: #3730a3;
+        --brand-soft: rgba(79,70,229,.08);
+        --surface:    #ffffff;
+        --bg:         #f1f5f9;
+        --border:     #e2e8f0;
+        --text-main:  #1e293b;
+        --text-muted: #64748b;
+        --danger:     #dc2626;
+        --success:    #16a34a;
+        --radius-lg:  14px;
+        --radius-md:  8px;
+        --shadow-lg:  0 20px 40px -10px rgba(0,0,0,.12);
+        --transition: .2s ease;
+    }
+
+    /* ── Layout ─────────────────────────────────────────────────── */
+    body { background: var(--bg); font-family: 'Inter', system-ui, -apple-system, sans-serif; color: var(--text-main); }
+
+    .wizard-card {
+        background: var(--surface);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-lg);
+        border: 1px solid var(--border);
+        overflow: hidden;
+    }
+
+    /* ── Progress bar ───────────────────────────────────────────── */
+    .progress-rail { height: 4px; background: var(--border); }
+    .progress-fill { height: 100%; background: var(--brand); transition: width .4s ease; border-radius: 0 4px 4px 0; }
+
+    /* ── Step header ────────────────────────────────────────────── */
+    .step-badge {
+        display: inline-flex; align-items: center; gap: 6px;
+        background: var(--brand-soft); color: var(--brand);
+        font-size: .72rem; font-weight: 700; letter-spacing: .06em;
+        text-transform: uppercase; padding: 4px 12px; border-radius: 99px;
+    }
+    .step-badge .dot { width: 6px; height: 6px; background: var(--brand); border-radius: 50%; }
+
+    /* ── Form controls ──────────────────────────────────────────── */
+    .form-label  { font-weight: 600; font-size: .875rem; margin-bottom: .4rem; color: var(--text-main); }
+    .form-text   { font-size: .78rem; color: var(--text-muted); margin-top: .3rem; }
+    .form-control, .form-select {
+        padding: .7rem 1rem;
+        border: 1.5px solid var(--border);
+        border-radius: var(--radius-md);
+        font-size: .9rem;
+        transition: border-color var(--transition), box-shadow var(--transition);
+        background: #fff;
+    }
+    .form-control:focus, .form-select:focus {
+        border-color: var(--brand);
+        box-shadow: 0 0 0 3px rgba(79,70,229,.12);
+        outline: none;
+    }
+    .form-control.is-invalid, .form-select.is-invalid { border-color: var(--danger); }
+    .invalid-feedback { font-size: .8rem; color: var(--danger); display: block; margin-top: .25rem; }
+    .input-group-text { background: var(--bg); border: 1.5px solid var(--border); color: var(--text-muted); }
+
+    /* ── Quill ──────────────────────────────────────────────────── */
+    #quill-editor    { min-height: 280px; border-radius: 0 0 var(--radius-md) var(--radius-md); border-color: var(--border) !important; }
+    .ql-toolbar.ql-snow { border-radius: var(--radius-md) var(--radius-md) 0 0; border-color: var(--border) !important; background: var(--bg); }
+    #quill-editor.ql-container.ql-snow { border-color: var(--border) !important; }
+    #quill-editor.is-invalid-quill { border: 1.5px solid var(--danger) !important; border-radius: var(--radius-md); }
+
+    /* ── Map ────────────────────────────────────────────────────── */
+    #map {
+        height: 260px;
+        border-radius: var(--radius-md);
+        border: 1.5px solid var(--border);
+        display: none; /* shown only for non-remote */
+    }
+    #map.visible { display: block; }
+
+    /* ── Buttons ────────────────────────────────────────────────── */
+    .btn-primary {
+        background: var(--brand); color: #fff; border: none;
+        padding: .7rem 1.8rem; font-weight: 600; border-radius: var(--radius-md);
+        transition: background var(--transition), transform var(--transition);
+    }
+    .btn-primary:hover { background: var(--brand-dark); transform: translateY(-1px); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-ghost {
+        background: none; border: none; color: var(--text-muted);
+        font-weight: 600; padding: .7rem 1.2rem; border-radius: var(--radius-md);
+        transition: color var(--transition), background var(--transition);
+    }
+    .btn-ghost:hover { background: var(--bg); color: var(--text-main); }
+    .btn-success  { background: var(--success); color: #fff; border: none; padding: .85rem; font-weight: 700; border-radius: var(--radius-md); width: 100%; }
+    .btn-success:hover { background: #15803d; }
+
+    /* ── Review card ─────────────────────────────────────────────── */
+    .review-row {
+        display: flex; justify-content: space-between; align-items: flex-start;
+        padding: .85rem 0; border-bottom: 1px solid var(--border);
+    }
+    .review-row:last-child { border-bottom: none; }
+    .review-label { font-size: .75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+    .review-value { font-weight: 600; color: var(--text-main); margin-top: 2px; word-break: break-word; max-width: 70%; }
+    .btn-edit-link { font-size: .8rem; font-weight: 700; color: var(--brand); background: none; border: none; cursor: pointer; padding: 0; white-space: nowrap; }
+    .btn-edit-link:hover { text-decoration: underline; }
+
+    /* ── Wizard step animation ─────────────────────────────────── */
+    .wizard-step { display: none; }
+    .wizard-step.active { display: block; animation: stepIn .25s ease-out; }
+    @@keyframes stepIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* ── Alert ──────────────────────────────────────────────────── */
+    .alert-box {
+        border-radius: var(--radius-md);
+        padding: 1rem 1.25rem;
+        font-size: .875rem;
+        margin-bottom: 1.5rem;
+        border-left: 4px solid var(--danger);
+        background: #fef2f2;
+        color: #7f1d1d;
+    }
+</style>
+
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-7 col-xl-6">
+
+            <!-- Page header -->
+            <div class="mb-4 d-flex align-items-center gap-3">
+                <a href="@Url.Action("Dashboard", "Employer")" class="btn-ghost px-0" title="Back to Dashboard">
+                    ← Dashboard
+                </a>
+                <h1 class="h5 fw-bold mb-0 text-truncate">@pageTitle</h1>
+            </div>
+
+            <!-- Progress rail -->
+            <div class="progress-rail rounded mb-4">
+                <div class="progress-fill" id="progressFill" style="width:25%"></div>
+            </div>
+
+            <div class="wizard-card p-4 p-md-5">
+                <form id="jobForm"
+                      asp-controller="JobPost"
+                      asp-action="@(isEdit ? "Edit" : "Create")"
+                      asp-route-jobId="@(isEdit ? ViewBag.JobId : null)"
+                      method="post"
+                      novalidate>
+
+                    @Html.AntiForgeryToken()
+
+                    <!-- ══════════════════════════════════════════════
+                         Server-side validation errors (after POST)
+                         Jumps to the correct step via JS on load.
+                    ═══════════════════════════════════════════════ -->
+                    @if (!ViewData.ModelState.IsValid && ViewData.ModelState.ErrorCount > 0)
+                    {
+                        <div class="alert-box" id="serverErrorBanner">
+                            <strong>⚠ Please fix the following:</strong>
+                            <div asp-validation-summary="All" class="mt-1 mb-0"></div>
+                        </div>
+                    }
+
+                    <!-- ══════════════════════════════════════════════
+                         STEP 1 – Role Basics
+                    ═══════════════════════════════════════════════ -->
+                    <div class="wizard-step active" id="step1" data-step="1">
+                        <span class="step-badge"><span class="dot"></span>Step 1 of 4 — Role Basics</span>
+                        <h2 class="fw-bold mt-2 mb-4 fs-4">Define the position</h2>
+
+                        <div class="mb-3">
+                            <label asp-for="Title" class="form-label">Job Title <span class="text-danger">*</span></label>
+                            <input asp-for="Title" class="form-control" placeholder="e.g. Senior Software Engineer" autocomplete="off" />
+                            <span asp-validation-for="Title" class="invalid-feedback"></span>
+                        </div>
+
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <label asp-for="Category" class="form-label">Category <span class="text-danger">*</span></label>
+                                <select asp-for="Category" class="form-select">
+                                    <option value="">— Select Category —</option>
+                                    <option value="Engineering">Engineering</option>
+                                    <option value="Design">Product &amp; Design</option>
+                                    <option value="Marketing">Marketing</option>
+                                    <option value="Sales">Sales &amp; Operations</option>
+                                    <option value="Data">Data &amp; Analytics</option>
+                                    <option value="Finance">Finance</option>
+                                    <option value="Legal">Legal</option>
+                                    <option value="HR">People &amp; HR</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                                <span asp-validation-for="Category" class="invalid-feedback"></span>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label asp-for="LocationType" class="form-label">Work Setting <span class="text-danger">*</span></label>
+                                <select asp-for="LocationType" class="form-select" id="locationTypeSelect">
+                                    <option value="Remote">Fully Remote</option>
+                                    <option value="Hybrid">Hybrid</option>
+                                    <option value="Onsite">On-site</option>
+                                </select>
+                                <span asp-validation-for="LocationType" class="invalid-feedback"></span>
+                            </div>
+                        </div>
+
+                        <!-- Location fields — shown only when not Remote -->
+                        <div id="locationFields" style="display:none;">
+                            <div class="mb-3">
+                                <label asp-for="Location" class="form-label">Office City / Address <span class="text-danger">*</span></label>
+                                <input asp-for="Location" class="form-control" placeholder="e.g. New York, NY" />
+                                <span asp-validation-for="Location" class="invalid-feedback"></span>
+                            </div>
+
+                            <div class="mb-3">
+                                <label asp-for="Country" class="form-label">Country</label>
+                                <input asp-for="Country" class="form-control" id="countryInput" placeholder="e.g. United States" />
+                                <span asp-validation-for="Country" class="invalid-feedback"></span>
+                            </div>
+
+                            <div class="mb-3">
+                                <p class="form-text mb-2">
+                                    <span class="fw-semibold">📍 Pin your office on the map</span>
+                                    — drag the marker to the exact location.
+                                </p>
+                                <div id="map" class="visible"></div>
+                                <p class="form-text mt-1" id="coordsDisplay">No pin set yet.</p>
+                            </div>
+                        </div>
+
+                        <!-- Hidden lat/lng — always in the DOM so model binding works -->
+                        <input type="hidden" asp-for="Latitude"  id="latField" />
+                        <input type="hidden" asp-for="Longitude" id="lngField" />
+
+                        <div class="d-flex justify-content-end pt-2">
+                            <button type="button" class="btn-primary" onclick="nextStep(1)">
+                                Next: Logistics →
+                            </button>
+                        </div>
+                    </div><!-- /step1 -->
+
+                    <!-- ══════════════════════════════════════════════
+                         STEP 2 – Logistics & Schedule
+                    ═══════════════════════════════════════════════ -->
+                    <div class="wizard-step" id="step2" data-step="2">
+                        <span class="step-badge"><span class="dot"></span>Step 2 of 4 — Logistics</span>
+                        <h2 class="fw-bold mt-2 mb-4 fs-4">Hiring Details</h2>
+
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <label asp-for="ContractType" class="form-label">Employment Type <span class="text-danger">*</span></label>
+                                <select asp-for="ContractType" class="form-select">
+                                    <option value="Full-time">Full-time</option>
+                                    <option value="Part-time">Part-time</option>
+                                    <option value="Contract">Contract</option>
+                                    <option value="Internship">Internship</option>
+                                    <option value="Freelance">Freelance</option>
+                                </select>
+                                <span asp-validation-for="ContractType" class="invalid-feedback"></span>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label asp-for="HiresTarget" class="form-label">Number of Hires <span class="text-danger">*</span></label>
+                                <input asp-for="HiresTarget" type="number" class="form-control" min="1" max="1000" />
+                                <span asp-validation-for="HiresTarget" class="invalid-feedback"></span>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label asp-for="WorkingHours" class="form-label">Working Hours &amp; Timezone <span class="text-danger">*</span></label>
+                            <input asp-for="WorkingHours" class="form-control" placeholder="e.g. Mon–Fri, 9 AM – 5 PM EST" />
+                            <span asp-validation-for="WorkingHours" class="invalid-feedback"></span>
+                        </div>
+
+                        <div class="d-flex justify-content-between pt-2">
+                            <button type="button" class="btn-ghost" onclick="goToStep(1)">← Back</button>
+                            <button type="button" class="btn-primary" onclick="nextStep(2)">Next: Pay &amp; Skills →</button>
+                        </div>
+                    </div><!-- /step2 -->
+
+                    <!-- ══════════════════════════════════════════════
+                         STEP 3 – Compensation & Skills
+                    ═══════════════════════════════════════════════ -->
+                    <div class="wizard-step" id="step3" data-step="3">
+                        <span class="step-badge"><span class="dot"></span>Step 3 of 4 — Matching</span>
+                        <h2 class="fw-bold mt-2 mb-4 fs-4">Compensation &amp; Skills</h2>
+
+                        <div class="mb-3">
+                            <label class="form-label">Annual Salary Range (USD) <span class="text-danger">*</span></label>
+                            <div class="row g-3">
+                                <div class="col-6">
+                                    <div class="input-group">
+                                        <span class="input-group-text">$</span>
+                                        <input asp-for="MinSalary" type="number" class="form-control" placeholder="Minimum" min="0" />
+                                    </div>
+                                    <span asp-validation-for="MinSalary" class="invalid-feedback"></span>
+                                </div>
+                                <div class="col-6">
+                                    <div class="input-group">
+                                        <span class="input-group-text">$</span>
+                                        <input asp-for="MaxSalary" type="number" class="form-control" placeholder="Maximum" min="0" />
+                                    </div>
+                                    <span asp-validation-for="MaxSalary" class="invalid-feedback"></span>
+                                </div>
+                            </div>
+                            <p class="form-text">Salary transparency attracts 47% more applicants on average.</p>
+                        </div>
+
+                        <div class="mb-3">
+                            <label asp-for="RequiredSkills" class="form-label">Required Skills <span class="text-danger">*</span></label>
+                            <input asp-for="RequiredSkills" class="form-control"
+                                   placeholder="React, .NET Core, AWS, PostgreSQL" />
+                            <p class="form-text">Separate skills with commas — our AI uses these for candidate match scores.</p>
+                            <span asp-validation-for="RequiredSkills" class="invalid-feedback"></span>
+                        </div>
+
+                        <div class="d-flex justify-content-between pt-2">
+                            <button type="button" class="btn-ghost" onclick="goToStep(2)">← Back</button>
+                            <button type="button" class="btn-primary" onclick="nextStep(3)">Next: Description →</button>
+                        </div>
+                    </div><!-- /step3 -->
+
+                    <!-- ══════════════════════════════════════════════
+                         STEP 4 – Job Description (Quill)
+                    ═══════════════════════════════════════════════ -->
+                    <div class="wizard-step" id="step4" data-step="4">
+                        <span class="step-badge"><span class="dot"></span>Step 4 of 4 — Description</span>
+                        <h2 class="fw-bold mt-2 mb-4 fs-4">Write the Job Description</h2>
+
+                        <div class="mb-3">
+                            <div id="quill-editor"></div>
+                            <!-- Hidden field — synced before every submit / step change -->
+                            <input type="hidden" asp-for="JobDescriptionHtml" id="descHidden" />
+                            <div id="quillError" class="invalid-feedback"></div>
+                            <span asp-validation-for="JobDescriptionHtml" class="invalid-feedback"></span>
+                            <p class="form-text mt-2">Minimum 50 characters of content. Describe responsibilities, requirements, and what makes this role exciting.</p>
+                        </div>
+
+                        <div class="d-flex justify-content-between pt-2">
+                            <button type="button" class="btn-ghost" onclick="goToStep(3)">← Back</button>
+                            <button type="button" class="btn-primary" onclick="goToReview()">Review &amp; Post →</button>
+                        </div>
+                    </div><!-- /step4 -->
+
+                    <!-- ══════════════════════════════════════════════
+                         STEP 5 – Review & Confirm
+                    ═══════════════════════════════════════════════ -->
+                    <div class="wizard-step" id="step5" data-step="5">
+                        <h2 class="fw-bold mb-1 fs-4">Review your job post</h2>
+                        <p class="text-muted small mb-4">Everything look good? Confirm to make it live.</p>
+
+                        <div class="review-row">
+                            <div>
+                                <div class="review-label">Job Title</div>
+                                <div class="review-value" id="rev-title">—</div>
+                            </div>
+                            <button type="button" class="btn-edit-link" onclick="goToStep(1)">Edit</button>
+                        </div>
+
+                        <div class="review-row">
+                            <div>
+                                <div class="review-label">Category</div>
+                                <div class="review-value" id="rev-category">—</div>
+                            </div>
+                            <button type="button" class="btn-edit-link" onclick="goToStep(1)">Edit</button>
+                        </div>
+
+                        <div class="review-row">
+                            <div>
+                                <div class="review-label">Work Setting</div>
+                                <div class="review-value" id="rev-location-type">—</div>
+                            </div>
+                            <button type="button" class="btn-edit-link" onclick="goToStep(1)">Edit</button>
+                        </div>
+
+                        <div class="review-row" id="rev-location-row">
+                            <div>
+                                <div class="review-label">Location</div>
+                                <div class="review-value" id="rev-location">—</div>
+                            </div>
+                            <button type="button" class="btn-edit-link" onclick="goToStep(1)">Edit</button>
+                        </div>
+
+                        <div class="review-row">
+                            <div>
+                                <div class="review-label">Employment Type</div>
+                                <div class="review-value" id="rev-contract">—</div>
+                            </div>
+                            <button type="button" class="btn-edit-link" onclick="goToStep(2)">Edit</button>
+                        </div>
+
+                        <div class="review-row">
+                            <div>
+                                <div class="review-label">Hires Target</div>
+                                <div class="review-value" id="rev-hires">—</div>
+                            </div>
+                            <button type="button" class="btn-edit-link" onclick="goToStep(2)">Edit</button>
+                        </div>
+
+                        <div class="review-row">
+                            <div>
+                                <div class="review-label">Salary Range (Annual)</div>
+                                <div class="review-value" id="rev-salary">—</div>
+                            </div>
+                            <button type="button" class="btn-edit-link" onclick="goToStep(3)">Edit</button>
+                        </div>
+
+                        <div class="review-row">
+                            <div>
+                                <div class="review-label">Required Skills</div>
+                                <div class="review-value" id="rev-skills">—</div>
+                            </div>
+                            <button type="button" class="btn-edit-link" onclick="goToStep(3)">Edit</button>
+                        </div>
+
+                        <div class="review-row">
+                            <div>
+                                <div class="review-label">Job Description</div>
+                                <div class="review-value text-success">✓ Provided</div>
+                            </div>
+                            <button type="button" class="btn-edit-link" onclick="goToStep(4)">Edit</button>
+                        </div>
+
+                        <div class="mt-4 d-flex flex-column gap-2">
+                            <button type="submit" id="finalSubmitBtn" class="btn-success">
+                                @(isEdit ? "Save Changes ✓" : "Confirm &amp; Post Job 🚀")
+                            </button>
+                            <button type="button" class="btn-ghost w-100 text-center" onclick="goToStep(4)">
+                                ← Back to Description
+                            </button>
+                        </div>
+                    </div><!-- /step5 -->
+
+                </form>
+            </div><!-- /wizard-card -->
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<partial name="_ValidationScriptsPartial" />
+<script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
+<script>
+// ══════════════════════════════════════════════════════════════════
+//  MERCOR – Job Post Wizard
+//  Single DOMContentLoaded, no duplicate function declarations.
+// ══════════════════════════════════════════════════════════════════
+(function () {
+    "use strict";
+
+    // ── State ─────────────────────────────────────────────────────
+    let currentStep = 1;
+    const TOTAL_STEPS = 4; // review is step 5 but not counted in progress
+    let quill, map, marker;
+    const mapInitialized = { done: false };
+
+    // ── Boot ──────────────────────────────────────────────────────
+    document.addEventListener("DOMContentLoaded", function () {
+        initQuill();
+        initLocationToggle();
+        initSubmitGuard();
+        handleServerErrors(); // jump to step with server-side errors
+        restoreDescriptionFromServer(); // re-fill Quill after failed POST
+    });
+
+    // ── Quill ─────────────────────────────────────────────────────
+    function initQuill() {
+        quill = new Quill('#quill-editor', {
+            theme: 'snow',
+            placeholder: 'Detail the role responsibilities, requirements, benefits…',
+            modules: {
+                toolbar: [
+                    ['bold', 'italic', 'underline'],
+                    [{ list: 'ordered' }, { list: 'bullet' }],
+                    [{ header: [2, 3, false] }],
+                    ['link', 'clean']
+                ]
+            }
+        });
+
+        // Sync on every keystroke
+        quill.on('text-change', syncQuill);
+    }
+
+    function syncQuill() {
+        document.getElementById('descHidden').value = quill.root.innerHTML;
+    }
+
+    function restoreDescriptionFromServer() {
+        const existing = document.getElementById('descHidden').value;
+        if (existing && existing.trim() !== '' && existing !== '<p><br></p>') {
+            quill.root.innerHTML = existing;
+        }
+    }
+
+    // ── Location toggle ───────────────────────────────────────────
+    function initLocationToggle() {
+        const select = document.getElementById('locationTypeSelect');
+        if (!select) return;
+
+        select.addEventListener('change', applyLocationVisibility);
+        applyLocationVisibility(); // run once on load (handles edit mode pre-selection)
+    }
+
+    function applyLocationVisibility() {
+        const select    = document.getElementById('locationTypeSelect');
+        const fields    = document.getElementById('locationFields');
+        const mapEl     = document.getElementById('map');
+        const isRemote  = select.value === 'Remote';
+
+        fields.style.display = isRemote ? 'none' : 'block';
+
+        if (!isRemote) {
+            mapEl.classList.add('visible');
+            initMap(); // safe — idempotent
+        } else {
+            // Clear location-specific values when switching to remote
+            document.getElementById('latField').value = '';
+            document.getElementById('lngField').value = '';
+            document.getElementById('coordsDisplay').textContent = 'No pin set yet.';
+        }
+    }
+
+    // ── Leaflet map ───────────────────────────────────────────────
+    function initMap() {
+        if (mapInitialized.done) {
+            // Already exists — just fix size if map container was hidden
+            setTimeout(() => map && map.invalidateSize(), 200);
+            return;
+        }
+        mapInitialized.done = true;
+
+        // Pre-load existing coordinates (edit mode)
+        const existingLat = parseFloat(document.getElementById('latField').value)  || 20;
+        const existingLng = parseFloat(document.getElementById('lngField').value)  || 0;
+        const zoom        = (existingLat === 20 && existingLng === 0) ? 2 : 10;
+
+        map    = L.map('map').setView([existingLat, existingLng], zoom);
+        marker = L.marker([existingLat, existingLng], { draggable: true }).addTo(map);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+            maxZoom: 18
+        }).addTo(map);
+
+        marker.on('dragend', updateCoords);
+
+        // Also allow clicking to reposition
+        map.on('click', function (e) {
+            marker.setLatLng(e.latlng);
+            updateCoords();
+        });
+
+        if (existingLat !== 20 || existingLng !== 0) {
+            updateCoords(); // show pre-loaded coords in display
+        }
+    }
+
+    function updateCoords() {
+        const pos = marker.getLatLng();
+        document.getElementById('latField').value      = pos.lat.toFixed(6);
+        document.getElementById('lngField').value      = pos.lng.toFixed(6);
+        document.getElementById('coordsDisplay').textContent =
+            `📍 Pinned at ${pos.lat.toFixed(4)}°, ${pos.lng.toFixed(4)}°`;
+    }
+
+    // ── Wizard navigation ─────────────────────────────────────────
+
+    // Exposed to onclick attributes in HTML
+    window.goToStep = goToStep;
+    window.nextStep = nextStep;
+    window.goToReview = goToReview;
+
+    function goToStep(step) {
+        document.querySelectorAll('.wizard-step').forEach(el => el.classList.remove('active'));
+        document.getElementById('step' + step).classList.add('active');
+        currentStep = step;
+        updateProgress(step);
+
+        // Fix map size when returning to step 1
+        if (step === 1 && map) {
+            setTimeout(() => map.invalidateSize(), 200);
+        }
+
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function nextStep(fromStep) {
+        if (!validateStep(fromStep)) return;
+        goToStep(fromStep + 1);
+    }
+
+    function goToReview() {
+        syncQuill(); // ensure hidden field is current
+
+        // Validate Quill content
+        const plainText = quill.getText().replace(/\s/g, '');
+        if (plainText.length < 50) {
+            const errEl = document.getElementById('quillError');
+            errEl.textContent  = 'Please write at least 50 characters in the job description.';
+            errEl.style.display = 'block';
+            document.getElementById('quill-editor').classList.add('is-invalid-quill');
+            return;
+        }
+        document.getElementById('quillError').style.display = 'none';
+        document.getElementById('quill-editor').classList.remove('is-invalid-quill');
+
+        populateReview();
+        goToStep(5);
+    }
+
+    function updateProgress(step) {
+        const pct = Math.min(step / TOTAL_STEPS * 100, 100);
+        document.getElementById('progressFill').style.width = pct + '%';
+    }
+
+    // ── Step validation ───────────────────────────────────────────
+    function validateStep(step) {
+        const stepEl = document.getElementById('step' + step);
+        let valid = true;
+
+        // Required fields within this step
+        stepEl.querySelectorAll('[required], input[data-val-required]').forEach(input => {
+            clearFieldError(input);
+            if (!input.value.trim()) {
+                showFieldError(input, input.dataset.valRequired || 'This field is required.');
+                valid = false;
+            }
+        });
+
+        // Step-specific cross-field rules
+        if (step === 1) {
+            const locType = document.getElementById('locationTypeSelect').value;
+            const locField = document.querySelector('input[name="Location"]');
+            if (locType !== 'Remote' && locField && !locField.value.trim()) {
+                showFieldError(locField, 'Office location is required for non-remote roles.');
+                valid = false;
+            }
+        }
+
+        if (step === 3) {
+            const minEl = document.querySelector('input[name="MinSalary"]');
+            const maxEl = document.querySelector('input[name="MaxSalary"]');
+            const min   = parseFloat(minEl?.value) || 0;
+            const max   = parseFloat(maxEl?.value) || 0;
+
+            if (min > 0 && max > 0 && max <= min) {
+                showFieldError(maxEl, 'Maximum salary must exceed minimum salary.');
+                valid = false;
+            }
+        }
+
+        if (!valid) window.scrollTo({ top: 0, behavior: 'smooth' });
+        return valid;
+    }
+
+    function showFieldError(input, message) {
+        input.classList.add('is-invalid');
+        // Find or create sibling .invalid-feedback
+        let fb = input.parentElement.querySelector('.invalid-feedback');
+        if (!fb) {
+            fb = document.createElement('div');
+            fb.className = 'invalid-feedback';
+            input.parentElement.appendChild(fb);
+        }
+        fb.textContent = message;
+        fb.style.display = 'block';
+    }
+
+    function clearFieldError(input) {
+        input.classList.remove('is-invalid');
+        const fb = input.parentElement.querySelector('.invalid-feedback');
+        if (fb) { fb.textContent = ''; fb.style.display = 'none'; }
+    }
+
+    // ── Review population ─────────────────────────────────────────
+    function populateReview() {
+        const val  = id => (document.querySelector(`[name="${id}"]`)?.value ?? '').trim();
+        const sel  = id => {
+            const el = document.querySelector(`[name="${id}"]`);
+            return el?.options?.[el.selectedIndex]?.text ?? el?.value ?? '—';
+        };
+        const fmt  = n => n ? '$' + Number(n).toLocaleString() : '—';
+
+        setText('rev-title',         val('Title')         || '—');
+        setText('rev-category',      sel('Category')      || '—');
+        setText('rev-location-type', sel('LocationType')  || '—');
+        setText('rev-contract',      sel('ContractType')  || '—');
+        setText('rev-hires',         val('HiresTarget')   || '—');
+        setText('rev-skills',        val('RequiredSkills')|| '—');
+        setText('rev-salary',        `${fmt(val('MinSalary'))} – ${fmt(val('MaxSalary'))} / yr`);
+
+        const locType = document.querySelector('[name="LocationType"]')?.value;
+        const locRow  = document.getElementById('rev-location-row');
+        if (locType === 'Remote') {
+            locRow.style.display = 'none';
+        } else {
+            locRow.style.display = 'flex';
+            const loc     = val('Location');
+            const country = val('Country');
+            setText('rev-location', [loc, country].filter(Boolean).join(', ') || '—');
+        }
+    }
+
+    function setText(id, text) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+    }
+
+    // ── Submit guard ──────────────────────────────────────────────
+    function initSubmitGuard() {
+        const form = document.getElementById('jobForm');
+        form.addEventListener('submit', function (e) {
+            // Final sync before actual submit
+            syncQuill();
+
+            // Ensure description meets the 50-char threshold
+            const plain = quill.getText().replace(/\s/g, '');
+            if (plain.length < 50) {
+                e.preventDefault();
+                goToStep(4);
+                const errEl = document.getElementById('quillError');
+                errEl.textContent = 'Job description must contain at least 50 characters.';
+                errEl.style.display = 'block';
+            }
+        });
+    }
+
+    // ── Handle server-side errors (after page reload) ─────────────
+    function handleServerErrors() {
+        const errorBanner = document.getElementById('serverErrorBanner');
+        if (!errorBanner) return;
+
+        // Map fields → steps
+        const fieldStepMap = {
+            Title:              1,
+            Category:           1,
+            LocationType:       1,
+            Location:           1,
+            Country:            1,
+            ContractType:       2,
+            WorkingHours:       2,
+            HiresTarget:        2,
+            MinSalary:          3,
+            MaxSalary:          3,
+            RequiredSkills:     3,
+            JobDescriptionHtml: 4,
+        };
+
+        // Find the first step that has a server error
+        let targetStep = null;
+        const errorFields = errorBanner.querySelectorAll('[data-valmsg-for]');
+
+        errorFields.forEach(span => {
+            if (span.textContent.trim() === '') return;
+            const field = span.getAttribute('data-valmsg-for');
+            const step  = fieldStepMap[field];
+            if (step && (targetStep === null || step < targetStep)) {
+                targetStep = step;
+            }
+        });
+
+        if (targetStep) goToStep(targetStep);
+    }
+
+})(); // end IIFE
+</script>
+}
